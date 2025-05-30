@@ -2,186 +2,88 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>🎡 Roulette Wheel</title>
+  <title>Random Name & Seat Picker</title>
   <style>
-    body {
-      background: linear-gradient(to bottom right, #f0f4ff, #d1e8ff);
-      font-family: 'Segoe UI', sans-serif;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 2rem;
+    body { text-align: center; font-family: Arial; margin-top: 50px; }
+    #nameDisplay { font-size: 48px; margin: 20px; animation: flicker 0.1s infinite; }
+    @keyframes flicker {
+      0% { opacity: 1; }
+      50% { opacity: 0.3; }
+      100% { opacity: 1; }
     }
-    h1 {
-      font-size: 2.5rem;
-      color: #2c3e50;
-      margin-bottom: 1rem;
-    }
-    .controls {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 1rem;
-    }
-    input[type="file"] {
-      padding: 0.5rem 1rem;
-      border-radius: 8px;
-      background-color: #3498db;
-      color: white;
-      border: none;
-      cursor: pointer;
-    }
-    button {
-      padding: 0.7rem 1.5rem;
-      font-size: 1rem;
-      border: none;
-      border-radius: 50px;
-      background: #27ae60;
-      color: white;
-      cursor: pointer;
-      transition: 0.3s;
-    }
-    button:hover {
-      background: #2ecc71;
-    }
-    .wheel-container {
-      position: relative;
-      width: 500px;
-      height: 500px;
-      margin-top: 2rem;
-    }
-    #wheelCanvas {
-      border-radius: 50%;
-      box-shadow: 0 8px 20px rgba(0,0,0,0.2);
-    }
-    #pointer {
-      position: absolute;
-      top: -30px;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 0;
-      height: 0;
-      border-left: 15px solid transparent;
-      border-right: 15px solid transparent;
-      border-top: 30px solid #e74c3c;
-      z-index: 10;
-    }
-    #winnerDisplay {
-      margin-top: 2rem;
-      font-size: 1.5rem;
-      color: #34495e;
-      background: #ecf0f1;
-      padding: 1rem 2rem;
-      border-radius: 12px;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-    }
+    .hidden { animation: none !important; }
   </style>
 </head>
 <body>
-  <h1>🎯 Roulette Wheel</h1>
-  <div class="controls">
-    <input type="file" id="upload" accept=".xlsx">
-    <button onclick="spinWheel()">SPIN!</button>
-  </div>
 
-  <div class="wheel-container">
-    <div id="pointer"></div>
-    <canvas id="wheelCanvas" width="500" height="500"></canvas>
-  </div>
+  <h1>สุ่มชื่อพร้อมเลขที่นั่ง</h1>
+  <input type="file" id="excelFile" accept=".xlsx" />
+  <br><br>
+  <label>ระยะเวลาสุ่ม (วินาที):</label>
+  <input type="number" id="duration" value="5" min="1" max="30" />
+  <br><br>
+  <button onclick="startRandom()">เริ่มสุ่ม</button>
+  <h2 id="nameDisplay">???</h2>
 
-  <div id="winnerDisplay"></div>
-
-  <audio id="tick" src="https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg"></audio>
+  <!-- Libraries -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <script>
-    const canvas = document.getElementById('wheelCanvas');
-    const ctx = canvas.getContext('2d');
-    const tickSound = document.getElementById('tick');
-    const winnerDiv = document.getElementById('winnerDisplay');
-    let people = [], spinning = false, currentRotation = 0;
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/howler/2.2.3/howler.min.js"></script>
 
-    document.getElementById('upload').addEventListener('change', function(e) {
+  <script>
+    let students = [];
+    let intervalId;
+    let sound;
+    let isRunning = false;
+
+    document.getElementById('excelFile').addEventListener('change', function(e) {
       const file = e.target.files[0];
       const reader = new FileReader();
+
       reader.onload = function(e) {
         const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: 'array' });
+        const workbook = XLSX.read(data, {type: 'array'});
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(sheet);
-        people = rows
-          .filter(r => r.Name)
-          .map(r => ({
-            name: r.Name,
-            seat: r.Seat,
-            display: `${r.Seat}: ${r.Name}`
-          }));
-        currentRotation = 0;
-        drawWheel();
-        winnerDiv.innerHTML = "";
+        const json = XLSX.utils.sheet_to_json(sheet); // อ่านโดยใช้ header
+
+        students = json.filter(row => row.Name && row.Seat); // ตรวจว่ามี Name & Seat
+        alert("โหลดข้อมูลแล้ว: " + students.length + " คน");
       };
+
       reader.readAsArrayBuffer(file);
     });
 
-    function drawWheel() {
-      const radius = canvas.width / 2;
-      const anglePerSlice = 2 * Math.PI / people.length;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.save();
-      ctx.translate(radius, radius);
-      ctx.rotate(currentRotation);
+    function startRandom() {
+      if (students.length === 0) {
+        alert("กรุณาโหลดไฟล์ Excel ที่มีคอลัมน์ Name และ Seat");
+        return;
+      }
 
-      people.forEach((person, i) => {
-        const startAngle = i * anglePerSlice;
-        const endAngle = startAngle + anglePerSlice;
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.arc(0, 0, radius, startAngle, endAngle);
-        ctx.fillStyle = `hsl(${(i * 360) / people.length}, 80%, 65%)`;
-        ctx.fill();
+      if (isRunning) return;
 
-        ctx.save();
-        ctx.rotate(startAngle + anglePerSlice / 2);
-        ctx.textAlign = "right";
-        ctx.fillStyle = "#2c3e50";
-        ctx.font = "bold 16px 'Segoe UI'";
-        ctx.fillText(person.display, radius - 10, 5);
-        ctx.restore();
+      const duration = parseInt(document.getElementById('duration').value) * 1000;
+      const display = document.getElementById('nameDisplay');
+      display.classList.remove('hidden');
+
+      sound = new Howl({
+        src: ['https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg'],
+        loop: true,
+        volume: 0.5
       });
 
-      ctx.restore();
-    }
+      sound.play();
+      isRunning = true;
 
-    function spinWheel() {
-      if (spinning || people.length === 0) return;
-      spinning = true;
-      const duration = 5000, fps = 60, totalFrames = duration / (1000 / fps);
-      let frame = 0;
-      const anglePerSlice = 2 * Math.PI / people.length;
-      const targetIndex = Math.floor(Math.random() * people.length);
-      const stopAngle = (3 * 2 * Math.PI) + (Math.PI * 1.5) - (targetIndex * anglePerSlice) - (anglePerSlice / 2);
-      const startRotation = currentRotation;
-      const delta = stopAngle - (startRotation % (2 * Math.PI));
+      intervalId = setInterval(() => {
+        const r = students[Math.floor(Math.random() * students.length)];
+        display.textContent = `${r.Name} - เลขที่นั่ง ${r.Seat}`;
+      }, 100);
 
-      const animate = () => {
-        if (frame >= totalFrames) {
-          spinning = false;
-          const winnerPerson = people.splice(targetIndex, 1)[0];
-          drawWheel();
-          winnerDiv.innerHTML = `🎉 ผู้ชนะคือ: <strong>${winnerPerson.display}</strong>`;
-          return;
-        }
-        currentRotation = startRotation + easeOutQuad(frame, 0, delta, totalFrames);
-        drawWheel();
-        if (frame % 5 === 0) tickSound.play();
-        frame++;
-        requestAnimationFrame(animate);
-      };
-      animate();
-    }
-
-    function easeOutQuad(t, b, c, d) {
-      t /= d;
-      return -c * t*(t-2) + b;
+      setTimeout(() => {
+        clearInterval(intervalId);
+        sound.stop();
+        display.classList.add('hidden');
+        isRunning = false;
+      }, duration);
     }
   </script>
 </body>

@@ -1,11 +1,16 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="th">
 <head>
   <meta charset="UTF-8">
-  <title>Random Name & Seat Picker</title>
+  <title>สุ่มชื่อพร้อมเลขที่นั่ง</title>
   <style>
-    body { text-align: center; font-family: Arial; margin-top: 50px; }
-    #nameDisplay { font-size: 48px; margin: 20px; animation: flicker 0.1s infinite; }
+    body { text-align: center; font-family: Arial, sans-serif; margin-top: 50px; }
+    #nameDisplay {
+      font-size: 48px;
+      margin: 20px;
+      animation: flicker 0.1s infinite;
+      transition: color 0.5s;
+    }
     @keyframes flicker {
       0% { opacity: 1; }
       50% { opacity: 0.3; }
@@ -22,10 +27,10 @@
   <label>ระยะเวลาสุ่ม (วินาที):</label>
   <input type="number" id="duration" value="5" min="1" max="30" />
   <br><br>
-  <button onclick="startRandom()">เริ่มสุ่ม</button>
+  <button onclick="startRandom()" id="startBtn">เริ่มสุ่ม</button>
   <h2 id="nameDisplay">???</h2>
 
-  <!-- Libraries -->
+  <!-- External Libraries -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/howler/2.2.3/howler.min.js"></script>
 
@@ -41,11 +46,16 @@
 
       reader.onload = function(e) {
         const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, {type: 'array'});
+        const workbook = XLSX.read(data, { type: 'array' });
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const json = XLSX.utils.sheet_to_json(sheet); // อ่านโดยใช้ header
+        const json = XLSX.utils.sheet_to_json(sheet);
 
-        students = json.filter(row => row.Name && row.Seat); // ตรวจว่ามี Name & Seat
+        students = json.filter(row => row.Name && row.Seat).map(row => ({
+          Name: row.Name,
+          Seat: row.Seat,
+          Fixed: ['true', '1', 'y', 'yes'].includes((row.Fixed || '').toString().toLowerCase())
+        }));
+
         alert("โหลดข้อมูลแล้ว: " + students.length + " คน");
       };
 
@@ -54,15 +64,25 @@
 
     function startRandom() {
       if (students.length === 0) {
-        alert("กรุณาโหลดไฟล์ Excel ที่มีคอลัมน์ Name และ Seat");
+        alert("กรุณาโหลดไฟล์ Excel ที่มีคอลัมน์ Name, Seat และ (ถ้ามี) Fixed");
         return;
       }
 
       if (isRunning) return;
 
-      const duration = parseInt(document.getElementById('duration').value) * 1000;
+      const durationInput = document.getElementById('duration');
+      let duration = parseInt(durationInput.value);
+      if (isNaN(duration) || duration < 1 || duration > 30) {
+        alert("กรุณาใส่ระยะเวลาสุ่มระหว่าง 1 ถึง 30 วินาที");
+        return;
+      }
+      duration *= 1000;
+
       const display = document.getElementById('nameDisplay');
+      const startBtn = document.getElementById('startBtn');
       display.classList.remove('hidden');
+      display.style.color = 'black';
+      startBtn.disabled = true;
 
       sound = new Howl({
         src: ['https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg'],
@@ -81,10 +101,19 @@
       setTimeout(() => {
         clearInterval(intervalId);
         sound.stop();
-        display.classList.add('hidden');
         isRunning = false;
+
+        const fixed = students.find(s => s.Fixed);
+        const winner = fixed || students[Math.floor(Math.random() * students.length)];
+
+        display.textContent = `${winner.Name} - เลขที่นั่ง ${winner.Seat}`;
+        display.classList.add('hidden');
+        display.style.color = 'green';
+
+        startBtn.disabled = false;
       }, duration);
     }
   </script>
+
 </body>
 </html>
